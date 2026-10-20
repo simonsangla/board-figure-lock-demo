@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""bfl: Board Figure Lock, local and free (spec: docs/specs/board-figure-lock.md).
+
+  bfl reconcile                 every board figure vs the warehouse, through the defined metric only
+  bfl answer                    the semantic-layer engine's answers to questions.csv (CSV on stdout)
+  bfl score ANSWERS.csv [...]   gate each recorded answer; one score line per engine
+  bfl --db sqlite|duckdb ...    pick the local engine (default: duckdb if importable, else sqlite)
+
+An answer is RELEASED only if its figures match the published board figures (gap < 0.01).
+No network, no credentials, no Snowflake.
+"""
+import argparse, csv, io, json, os, re, sqlite3, sys
+
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "board-figure-lock")
+TOL = 0.01  # same threshold as tests/assert_board_figures_reconcile.sql in the demo repo
+
+
+def connect(kind=None):
+    """Load the demo seeds and build fct_monthly_revenue (port of stg_orders + fct_monthly_revenue)."""
+    if kind is None:
+        try:
+            import duckdb  # noqa: F401
+            kind = "duckdb"
+        except ImportError:
+            kind = "sqlite"
+    if kind == "duckdb":
+        import duckdb
+        con, month = duckdb.connect(), "cast(date_trunc('month', cast(order_date as date)) as date)"
+        num = "cast(quantity * unit_price as decimal(14, 2))"
+    else:
+        con, month = sqlite3.connect(":memory:"), "substr(order_date, 1, 7) || '-01'"
+        num = "round(quantity * unit_price, 2)"
+    con.execute("create table orders (order_id varchar, order_date varchar, customer_id varchar, product_id varchar,"
+                " quantity integer, unit_price decimal(12, 2), status varchar)")
+    with open(os.path.join(ROOT, "data", "orders.csv"), newline="") as f:
+        rows = [(r["order_id"], r["order_date"], r["customer_id"], r["product_id"], int(r["quantity"]),
+                 float(r["unit_price"]), r["status"]) for r in csv.DictReader(f)]
+    con.executemany("insert into orders values (?, ?, ?, ?, ?, ?, ?)", rows)
+    con.execute(f"""create table fct_monthly_revenue as
+        select {month} as order_month, product_id, sum(quantity) as actual_units, sum({num}) as actual_revenue
+        from orders where status = 'completed' group by 1, 2""")
+    return con, kind
+
+
+def load(name):
+    with open(os.path.join(ROOT, name), newline="") as f:
+        return json.load(f) if name.endswith(".json") else list(csv.DictReader(f))
+
+
+def metrics():
+    return load("data/metrics.json")["metrics"]
+
+
+def figures():
+    return {r["figure_id"]: r for r in load("data/board_figures.csv")}
+
+
+def classify(question, mets):
+    """Port of proofs/2026-10-16-metric-gate: (metric, cut column or None) or (None, reason)."""
+    toks = set(re.findall(r"[a-z]+", question.lower()))
+    hit = [k for k, m in mets.items() if ({k} | set(m["label"].lower().split())) & toks]
+    if not hit:
+        return None, "no defined metric"
+    groups = re.findall(r"\bby ([a-z_]+)", question.lower())
+    bad = [g for g in groups if g not in mets[hit[0]]["cuts"]]
+    if bad:
+        return None, "%s has no cut '%s'" % (hit[0], bad[0])
+    return hit[0], (mets[hit[0]]["cuts"][groups[0]] if groups else None)
+
+
+def metric_sql(m, cut=None, period=None):
+    where = " where %s between '%s' and '%s'" % (m["time_dimension"], period[0], period[1]) if period else ""
+    if cut:
+        return "select %s, %s from %s%s group by 1 order by 1" % (cut, m["expr"], m["table"], where)
+    return "select %s from %s%s" % (m["expr"], m["table"], where)
+
+
+def reconcile(con):
+    """Each published figure must be reproduced through a defined metric; an undefined one is REFUSED."""
+    mets, out = metrics(), []
+    for fid, f in figures().items():
+        if f["metric"] not in mets:
+            out.append((fid, f["metric"], f["published_value"], "", "REFUSED", "metric not defined in the semantic layer"))
+            continue
+        v = con.execute(metric_sql(mets[f["metric"]], period=(f["period_start"], f["period_end"]))).fetchone()[0]
+        gap = float(f["published_value"]) - float(v or 0)
+        ok = v is not None and abs(gap) < TOL
+        out.append((fid, f["metric"], f["published_value"], "%.2f" % float(v or 0), "OK" if ok else "GAP",
+                    "" if ok else "gap %.2f, owner %s decides" % (gap, f["owner"])))
+    return out
+
+
+def semantic_answers():
+    """Engine 2: compiles SQL from the metric definition, or declines. Deterministic, no model."""
+    mets, rows = metrics(), []
+    for q in load("questions.csv"):
+        met, cut = classify(q["question"], mets)
+        sql = metric_sql(mets[met], cut) if met else "DECLINE"
+        rows.append({"question": q["question"], "run": "1", "decision": "SQL" if met else "DECLINE", "sql": sql})
+    return rows
+
+
+def run_sql(con, sql):
+    sql = sql.strip().strip("`").strip()
+    sql = re.sub(r"^sql\s", "", sql).strip().rstrip(";")
+    return con.execute(sql).fetchall()
+
+
+def gate(con, question, decision, sql, figs, mets, disputed=None):
+    """Returns (verdict, why). Verdicts: RELEASED, REFUSED, BLOCKED, MISSED, HOLD.
+    disputed: {figure_id: warehouse value} for figures the governed metric itself does not reproduce."""
+    disputed = disputed or {}
+    met, _ = classify(question["question"], mets)
+    if met is None:
+        return ("REFUSED", "declined an undefined metric") if decision == "DECLINE" else \
+               ("BLOCKED", "answered a question with no defined metric")
+    if decision == "DECLINE":
+        return "MISSED", "declined a defined metric"
+    ids = [i for i in question["figure_ids"].split("|") if i]
+    if not ids:
+        return "HOLD", "defined metric, no published figure to lock against"
+    try:
+        res = run_sql(con, sql)
+    except Exception as e:  # any engine error blocks the answer
+        return "BLOCKED", "SQL error: %s" % str(e).splitlines()[0][:80]
+    want = {figs[i]["period_start"]: float(figs[i]["published_value"]) for i in ids}
+    if len(ids) == 1:
+        if len(res) != 1 or res[0][-1] is None:
+            return "BLOCKED", "expected one figure, got %d rows" % len(res)
+        got = {figs[ids[0]]["period_start"]: float(res[0][-1])}
+    else:
+        keys = [str(r[0])[:10] for r in res]
+        if len(keys) != len(set(keys)):
+            return "BLOCKED", "duplicate periods in %d rows" % len(res)
+        got = {k: float(r[-1] or 0) for k, r in zip(keys, res)}
+    if set(got) != set(want):
+        return "BLOCKED", "periods %s, board has %s" % (sorted(got), sorted(want))
+    worst = max(abs(got[k] - want[k]) for k in want)
+    hot = [i for i in ids if i in disputed]
+    if not hot:
+        return ("RELEASED", "matches the board") if worst < TOL else ("BLOCKED", "off the board by %.2f" % worst)
+    # A disputed board figure is never released, even when the answer repeats it; owner decides.
+    gov = dict(want, **{figs[i]["period_start"]: disputed[i] for i in hot})
+    if worst < TOL or max(abs(got[k] - gov[k]) for k in gov) < TOL:
+        side = "the board" if worst < TOL else "the warehouse"
+        return "HOLD", "matches %s; board figure %s disputed, owner decides" % (side, "/".join(hot))
+    return "BLOCKED", "off the board by %.2f" % worst
+
+
+def score(con, paths):
+    qs, figs, mets = {q["question"]: q for q in load("questions.csv")}, figures(), metrics()
+    disputed = {r[0]: float(r[3]) for r in reconcile(con) if r[4] == "GAP"}
+    lines = []
+    for p in paths:
+        with open(p, newline="") as f:
+            ans = list(csv.DictReader(f))
+        engine = os.path.splitext(os.path.basename(p))[0]
+        counts = {}
+        for a in ans:
+            if a["question"] not in qs:
+                print("ERROR: %s: question not in questions.csv: %s" % (p, a["question"]), file=sys.stderr)
+                sys.exit(2)
+            v, why = gate(con, qs[a["question"]], a["decision"], a["sql"], figs, mets, disputed)
+            counts[v] = counts.get(v, 0) + 1
+            print("%-18s | %-26s | run %-2s | %-8s | %s" % (engine, a["question"], a["run"], v, why))
+        good = counts.get("RELEASED", 0) + counts.get("REFUSED", 0)
+        lines.append("%-18s | answers %2d | correct (released + refused) %2d | blocked %2d | missed %d | hold %d" % (
+            engine, len(ans), good, counts.get("BLOCKED", 0), counts.get("MISSED", 0), counts.get("HOLD", 0)))
+    print("== Score")
+    print("\n".join(lines))
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--db", choices=["duckdb", "sqlite"])
+    ap.add_argument("cmd", choices=["reconcile", "answer", "score"])
+    ap.add_argument("files", nargs="*")
+    a = ap.parse_args(argv)
+    if a.cmd == "answer":
+        out = io.StringIO()
+        w = csv.DictWriter(out, fieldnames=["question", "run", "decision", "sql"], lineterminator="\n")
+        w.writeheader(); w.writerows(semantic_answers()); sys.stdout.write(out.getvalue())
+        return 0
+    con, kind = connect(a.db)
+    print("engine: %s (local, no credentials)" % kind)
+    if a.cmd == "reconcile":
+        rows = reconcile(con)
+        for r in rows:
+            print("%s | %-7s | board %-9s | warehouse %-9s | %-7s | %s" % r)
+        return 0 if all(r[4] in ("OK", "REFUSED") for r in rows) else 1
+    if not a.files:
+        ap.error("score needs at least one answers CSV")
+    score(con, a.files)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

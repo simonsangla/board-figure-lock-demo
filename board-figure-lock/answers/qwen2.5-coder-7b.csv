@@ -1,0 +1,76 @@
+question,run,decision,sql
+total revenue,1,SQL,"```sql
+SELECT SUM(actual_revenue) AS total_revenue FROM fct_monthly_revenue;
+```"
+total revenue,2,SQL,"```sql
+SELECT SUM(actual_revenue) AS total_revenue FROM fct_monthly_revenue;
+```"
+total revenue,3,SQL,"```sql
+SELECT SUM(actual_revenue) AS total_revenue FROM fct_monthly_revenue;
+```"
+total revenue,4,SQL,SELECT SUM(actual_revenue) AS total_revenue FROM fct_monthly_revenue;
+total revenue,5,SQL,"```sql
+SELECT SUM(actual_revenue) AS total_revenue FROM fct_monthly_revenue;
+```"
+revenue by month,1,SQL,"```sql
+SELECT order_month, SUM(actual_revenue) AS total_revenue
+FROM fct_monthly_revenue
+GROUP BY order_month
+ORDER BY order_month;
+```"
+revenue by month,2,SQL,"```sql
+SELECT order_month, SUM(actual_revenue) AS total_revenue
+FROM fct_monthly_revenue
+GROUP BY order_month
+ORDER BY order_month;
+```"
+revenue by month,3,SQL,"SELECT order_month, SUM(actual_revenue) as total_revenue FROM fct_monthly_revenue GROUP BY order_month;"
+revenue by month,4,SQL,"```sql
+SELECT order_month, SUM(actual_revenue) AS total_revenue FROM fct_monthly_revenue GROUP BY order_month;
+```"
+revenue by month,5,SQL,"SELECT order_month, SUM(actual_revenue) AS total_revenue FROM fct_monthly_revenue GROUP BY order_month ORDER BY order_month;"
+revenue by product,1,SQL,"```sql
+SELECT product_id, SUM(actual_revenue) as total_revenue
+FROM fct_monthly_revenue
+GROUP BY product_id;
+```"
+revenue by product,2,SQL,"```sql
+SELECT product_id, SUM(actual_revenue) AS total_revenue
+FROM fct_monthly_revenue
+GROUP BY product_id;
+```"
+revenue by product,3,SQL,"```sql
+SELECT product_id, SUM(actual_revenue) AS total_revenue
+FROM fct_monthly_revenue
+GROUP BY product_id;
+```"
+revenue by product,4,SQL,"```sql
+SELECT product_id, SUM(actual_units) AS total_units_sold, SUM(actual_revenue) AS total_revenue
+FROM fct_monthly_revenue
+GROUP BY product_id;
+```"
+revenue by product,5,SQL,"```sql
+SELECT product_id, SUM(actual_revenue) AS total_revenue
+FROM fct_monthly_revenue
+GROUP BY product_id;
+```"
+revenue by region,1,DECLINE,DECLINE
+revenue by region,2,DECLINE,DECLINE
+revenue by region,3,DECLINE,DECLINE
+revenue by region,4,DECLINE,DECLINE
+revenue by region,5,DECLINE,DECLINE
+customer happiness score,1,DECLINE,DECLINE
+customer happiness score,2,DECLINE,DECLINE
+customer happiness score,3,DECLINE,DECLINE
+customer happiness score,4,DECLINE,DECLINE
+customer happiness score,5,DECLINE,DECLINE
+churn rate by month,1,DECLINE,DECLINE
+churn rate by month,2,DECLINE,DECLINE
+churn rate by month,3,DECLINE,DECLINE
+churn rate by month,4,DECLINE,DECLINE
+churn rate by month,5,DECLINE,DECLINE
+net promoter score,1,DECLINE,DECLINE
+net promoter score,2,DECLINE,DECLINE
+net promoter score,3,DECLINE,DECLINE
+net promoter score,4,DECLINE,DECLINE
+net promoter score,5,DECLINE,DECLINE

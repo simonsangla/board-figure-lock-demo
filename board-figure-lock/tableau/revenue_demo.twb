@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<!-- Synthetic demo workbook for Board Figure Lock (#80): written by hand, no client data, layout as in Tableau's own sample files (knowledge/tableau.md). -->
+<workbook version='18.1'>
+  <datasources>
+    <datasource hasconnection='false' inline='true' name='Parameters' version='18.1'>
+      <column caption='Month' datatype='string' name='[Parameter 1]' param-domain-type='any' role='measure' type='nominal' value='&quot;2026-01&quot;'>
+        <calculation class='tableau' formula='&quot;2026-01&quot;' />
+      </column>
+    </datasource>
+    <datasource caption='Revenue demo' inline='true' name='duckdb.demo' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='demo' name='duckdb.demo'>
+            <connection class='duckdb' dbname='demo.duckdb' schema='main' />
+          </named-connection>
+        </named-connections>
+        <relation join='inner' type='join'>
+          <clause type='join'>
+            <expression op='='>
+              <expression op='[fct_monthly_revenue].[product_id]' />
+              <expression op='[products].[product_id]' />
+            </expression>
+          </clause>
+          <relation connection='duckdb.demo' name='fct_monthly_revenue' table='[main].[fct_monthly_revenue]' type='table' />
+          <relation connection='duckdb.demo' name='products' table='[main].[products]' type='table' />
+        </relation>
+      </connection>
+      <column caption='Actual Revenue' datatype='real' name='[actual_revenue]' role='measure' type='quantitative' />
+      <column caption='Revenue' datatype='real' name='[Calculation_0001]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SUM([actual_revenue])' />
+      </column>
+      <column caption='Revenue incl. tax' datatype='real' name='[Calculation_0002]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SUM([actual_revenue]) * 1.2' />
+      </column>
+    </datasource>
+  </datasources>
+</workbook>

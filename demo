@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# One command, Python 3 stdlib only (DuckDB used if installed). No network, no credentials.
+# No "set -e": reconcile exits 1 on purpose, because the demo board holds one wrong figure (BF03).
+cd "$(dirname "$0")"
+echo "### 1. Reconcile: every board figure recomputed through the one defined metric"
+python3 bin/bfl reconcile "$@"
+echo
+echo "### 2. Gate: each recorded AI answer is RELEASED, REFUSED, HOLD or BLOCKED; score per engine"
+python3 bin/bfl score board-figure-lock/answers/*.csv "$@"
+echo
+echo "### 3. Tableau check: does the workbook's Revenue calculation equal the defined metric?"
+python3 bin/twb-read board-figure-lock/tableau/revenue_demo.twb --check board-figure-lock/tableau/map.json

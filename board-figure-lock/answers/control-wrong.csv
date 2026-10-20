@@ -1,0 +1,5 @@
+question,run,decision,sql
+total revenue,1,SQL,"SELECT SUM(quantity * unit_price) AS gross FROM orders"
+revenue by month,1,SQL,"SELECT order_month, SUM(actual_revenue) * 1.1 AS revenue FROM fct_monthly_revenue GROUP BY order_month"
+churn rate by month,1,SQL,"SELECT AVG(CASE WHEN status = 'refunded' THEN 1.0 ELSE 0 END) AS churn FROM orders"
+net promoter score,1,DECLINE,DECLINE

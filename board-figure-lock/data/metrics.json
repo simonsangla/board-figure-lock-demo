@@ -1,0 +1,12 @@
+{
+  "_source": "simonsangla/dbt-revenue-variance-demo@78a8897 models/marts/_semantic_models.yml (semantic model monthly_revenue, metric revenue)",
+  "metrics": {
+    "revenue": {
+      "label": "Revenue",
+      "table": "fct_monthly_revenue",
+      "expr": "sum(actual_revenue)",
+      "time_dimension": "order_month",
+      "cuts": {"month": "order_month", "product": "product_id"}
+    }
+  }
+}
