@@ -1,4 +1,4 @@
-"""twb-read (#80): reads calculations, tables, joins and relationships from a Tableau file alone,
+"""twb-read: reads calculations, tables, joins and relationships from a Tableau file alone,
 and flags a Tableau calculation that differs from the defined metric. Stdlib only, no network."""
 import importlib.machinery
 import importlib.util
@@ -104,7 +104,7 @@ MAP = {"revenue": {"calculation": "Revenue", "fields": {"[actual_revenue]": "act
 
 
 class TestReviewFindings(unittest.TestCase):
-    """One test per finding of the local code review of PR #82 (#80)."""
+    """One test per finding of an earlier code review."""
 
     def test_same_caption_in_two_datasources_is_ambiguous_not_match(self):
         src = wb(ds_xml("A", "fct_monthly_revenue", "SUM([actual_revenue])"), ds_xml("B", "fct_monthly_revenue", "SUM([y])"))

@@ -6,7 +6,7 @@
   twb-read FILE --check MAP.json [--json]  compare mapped Tableau calculations with the defined metrics
                                            (Board Figure Lock): MATCH, MISMATCH, AMBIGUOUS or MISSING per metric
 
-Facts and sources: knowledge/tableau.md. Stdlib only. A .twbx is a zip that holds one .twb (XML).
+Stdlib only. A .twbx is a zip that holds one .twb (XML).
 """
 import argparse, json, os, re, sys, zipfile
 import xml.etree.ElementTree as ET

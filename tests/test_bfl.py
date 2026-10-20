@@ -1,4 +1,4 @@
-"""Board Figure Lock gate (#71): known-good passes, wrong figure fails, undefined metric refused.
+"""Board Figure Lock gate: known-good passes, wrong figure fails, undefined metric refused.
 Runs on sqlite3 (stdlib, always) and on DuckDB when it is importable (no install in bin/check)."""
 import importlib.machinery
 import importlib.util

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bfl: Board Figure Lock, local and free (spec: docs/specs/board-figure-lock.md).
+"""bfl: Board Figure Lock, local and free (concept: README.md).
 
   bfl reconcile                 every board figure vs the warehouse, through the defined metric only
   bfl answer                    the semantic-layer engine's answers to questions.csv (CSV on stdout)
@@ -12,7 +12,7 @@ No network, no credentials, no Snowflake.
 import argparse, csv, io, json, os, re, sqlite3, sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "board-figure-lock")
-TOL = 0.01  # same threshold as tests/assert_board_figures_reconcile.sql in the demo repo
+TOL = 0.01  # same threshold as tests/assert_board_figures_reconcile.sql in simonsangla/dbt-revenue-variance-demo
 
 
 def connect(kind=None):
@@ -56,7 +56,7 @@ def figures():
 
 
 def classify(question, mets):
-    """Port of proofs/2026-10-16-metric-gate: (metric, cut column or None) or (None, reason)."""
+    """Port of simonsangla/dbt-revenue-variance-demo proofs/2026-10-16-metric-gate: (metric, cut column or None) or (None, reason)."""
     toks = set(re.findall(r"[a-z]+", question.lower()))
     hit = [k for k, m in mets.items() if ({k} | set(m["label"].lower().split())) & toks]
     if not hit:
