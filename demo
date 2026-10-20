@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+# One command, Python 3 stdlib only (DuckDB used if installed). No network, no credentials.
+# Usage: ./demo [--db sqlite|duckdb]
+# Exit code: 0 when every step gives the expected result, else the first failing step's code.
+# The demo board holds exactly one wrong figure on purpose (BF03), so reconcile's exit 1 is
+# accepted only when BF03 is the one and only GAP and nothing crashed.
+cd "$(dirname "$0")" || exit 1
+rc=0
+fail() { [ "$rc" -ne 0 ] || rc=$1; }
+
+echo "### 1. Reconcile: every board figure recomputed through the one defined metric"
+out=$(python3 bin/bfl reconcile "$@" 2>&1); r=$?
+printf '%s\n' "$out"
+if [ "$r" -eq 1 ]; then
+  gaps=$(printf '%s\n' "$out" | grep -c '| GAP ')
+  if [ "$gaps" -ne 1 ] || ! printf '%s\n' "$out" | grep -q '^BF03 .*| GAP ' \
+     || printf '%s\n' "$out" | grep -q '^Traceback'; then
+    echo "demo: reconcile failed beyond the one expected gap (BF03)" >&2; fail 1
+  fi
+elif [ "$r" -ne 0 ]; then
+  fail "$r"
+fi
+
+echo
+echo "### 2. Gate: each recorded AI answer is RELEASED, REFUSED, HOLD, MISSED or BLOCKED; score per engine"
+python3 bin/bfl score board-figure-lock/answers/*.csv "$@" || fail $?
+
+echo
+echo "### 3. Tableau check: does the workbook's Revenue calculation equal the defined metric?"
+python3 bin/twb-read board-figure-lock/tableau/revenue_demo.twb --check board-figure-lock/tableau/map.json || fail $?
+exit "$rc"

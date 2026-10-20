@@ -1,0 +1,6 @@
+figure_id,period_start,period_end,metric,published_value,source_deck,owner,question
+BF01,2026-01-01,2026-01-31,revenue,16553.70,Board pack Jan 2026,CFO,What was total revenue in January 2026?
+BF02,2026-02-01,2026-02-28,revenue,19396.50,Board pack Feb 2026,CFO,What was total revenue in February 2026?
+BF03,2026-03-01,2026-03-31,revenue,17600.00,Board pack Mar 2026,CFO,What was total revenue in March 2026?
+BF04,2026-01-01,2026-03-31,revenue,53546.30,Board pack Q1 2026,CFO,What was total revenue in Q1 2026?
+BF05,2026-01-01,2026-03-31,units,675,Board pack Q1 2026,Head of Sales,How many units did we sell in Q1 2026?

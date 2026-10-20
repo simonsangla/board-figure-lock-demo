@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""twb-read: list what a Tableau workbook file holds, from the file alone (no Tableau Server, no credentials).
+
+  twb-read FILE.twb|FILE.twbx              calculations, source tables, joins, relationships (text)
+  twb-read FILE --json                     same, as JSON
+  twb-read FILE --check MAP.json [--json]  compare mapped Tableau calculations with the defined metrics
+                                           (Board Figure Lock): MATCH, MISMATCH, AMBIGUOUS or MISSING per metric
+
+Stdlib only. A .twbx is a zip that holds one .twb (XML).
+"""
+import argparse, json, os, re, sys, zipfile
+import xml.etree.ElementTree as ET
+
+
+def parse(data):
+    # Tableau files carry no DTD. Refusing one blocks entity-expansion bombs, which bundled Expat < 2.7.2
+    # may not stop (https://docs.python.org/3/library/xml.html).
+    if re.search(rb"<!(DOCTYPE|ENTITY)", data[:65536]):
+        sys.exit("twb-read: refused, the file declares a DTD or entities (not a Tableau workbook)")
+    return ET.fromstring(data)
+
+
+def load_twb(path):
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as z:
+            names = [n for n in z.namelist() if n.lower().endswith(".twb")]
+            if len(names) != 1:
+                sys.exit("twb-read: %s holds %d .twb files, expected 1" % (path, len(names)))
+            return parse(z.read(names[0]))
+    with open(path, "rb") as f:
+        return parse(f.read())
+
+
+def strip(s):
+    return (s or "").strip("[]")
+
+
+def is_tag(el, name):
+    """Real files prefix some tags with a feature flag: '_.fcp.ObjectModelEncapsulateLegacy.false...relation'."""
+    return isinstance(el.tag, str) and (el.tag == name or el.tag.endswith("..." + name))
+
+
+def clause(expr):
+    """<expression op='='><expression op='[a].[x]'/><expression op='[b].[y]'/></expression> -> '[a].[x] = [b].[y]'."""
+    if expr is None:
+        return ""
+    kids = list(expr.findall("expression"))
+    if not kids:
+        return expr.get("op", "")
+    if len(kids) == 1:
+        return "%s(%s)" % (expr.get("op"), clause(kids[0]))
+    return (" %s " % expr.get("op")).join(clause(k) for k in kids)
+
+
+def read(root):
+    out = []
+    for ds in root.iter("datasource"):
+        if ds.get("name") == "Parameters" or ds.find("connection") is None and ds.find(".//column") is None:
+            continue  # parameters block, or a datasource reference with no definition
+        d = {"datasource": ds.get("caption") or ds.get("name"), "connections": [], "tables": [], "joins": [],
+             "relationships": [], "calculations": []}
+        seen = set()
+        for c in ds.iter("connection"):
+            if c.get("class") in (None, "federated"):
+                continue
+            key = (c.get("class"), c.get("server"), c.get("dbname"), c.get("filename"))
+            if key not in seen:
+                seen.add(key)
+                d["connections"].append({k: c.get(k) for k in ("class", "server", "dbname", "schema", "filename") if c.get(k)})
+        tables, joins = set(), []
+        for r in (e for e in ds.iter() if is_tag(e, "relation")):
+            t = r.get("type")
+            if t == "table" and r.get("table"):
+                tables.add((r.get("table"), r.get("connection") or ""))
+            elif t == "text":
+                tables.add(("custom SQL: " + " ".join((r.text or "").split())[:120], r.get("connection") or ""))
+            elif t == "join":
+                j = {"join": r.get("join"), "on": clause(r.find("clause/expression"))}
+                if j not in joins:  # 2020.2+ files repeat the join tree in each object's properties
+                    joins.append(j)
+        d["tables"] = [{"table": t, "connection": c} for t, c in sorted(tables)]
+        d["joins"] = joins
+        objs = {o.get("id"): o.get("caption") or o.get("id") for o in ds.iter("object")}
+        for rel in ds.iter("relationship"):
+            a, b = rel.find("first-end-point"), rel.find("second-end-point")
+            d["relationships"].append({
+                "left": objs.get(a.get("object-id")) if a is not None else None,
+                "right": objs.get(b.get("object-id")) if b is not None else None,
+                "on": clause(rel.find("expression"))})
+        for col in ds.iter("column"):
+            calc = col.find("calculation")
+            if calc is not None and calc.get("formula") is not None:
+                d["calculations"].append({"name": col.get("caption") or strip(col.get("name")),
+                                          "id": col.get("name"), "role": col.get("role"),
+                                          "formula": calc.get("formula")})
+        out.append(d)
+    return out
+
+
+def norm(formula, fields):
+    """Drop datasource qualifiers, map Tableau fields to warehouse columns in one pass,
+    then ignore case and spaces outside string literals (literals are kept as written)."""
+    unq = lambda s: re.sub(r"\[[^\]]+\]\.(?=\[)", "", s)
+    f, fields = unq(formula), {unq(k): v for k, v in (fields or {}).items()}
+    if fields:
+        f = re.sub("|".join(re.escape(k) for k in sorted(fields, key=len, reverse=True)), lambda m: fields[m.group(0)], f)
+    parts = re.split(r"(\"(?:[^\"]|\"\")*\"|'(?:[^']|'')*')", f)
+    return "".join(p if i % 2 else re.sub(r"\s+", "", p).lower() for i, p in enumerate(parts))
+
+
+def table_name(t):
+    return strip(t.split("].[")[-1]).lower()
+
+
+def check(sources, mapping, metrics):
+    """mapping: {metric: {"calculation": caption, "datasource": optional caption, "fields": {"[Tableau field]": "column"}}}.
+    MATCH needs the same formula AND a datasource that reads the metric's table."""
+    unknown = sorted(set(mapping) - set(metrics))
+    if unknown:
+        sys.exit("twb-read: map names metrics that are not defined: %s" % ", ".join(unknown))
+    rows = []
+    for met, m in sorted(metrics.items()):
+        spec = mapping.get(met) or {}
+        hits = [(s, c) for s in sources for c in s["calculations"]
+                if c["name"] == spec.get("calculation") and spec.get("datasource") in (None, s["datasource"])]
+        if not hits:
+            rows.append((met, m["expr"], "", "MISSING", "no Tableau calculation mapped to this metric"))
+            continue
+        if len(hits) > 1:
+            rows.append((met, m["expr"], " | ".join(c["formula"] for _, c in hits), "AMBIGUOUS",
+                         "'%s' exists in %d datasources: add \"datasource\" to the map" % (spec["calculation"], len(hits))))
+            continue
+        src, calc = hits[0]
+        if norm(calc["formula"], spec.get("fields", {})) != norm(m["expr"], {}):
+            rows.append((met, m["expr"], calc["formula"], "MISMATCH",
+                         "Tableau '%s' differs from the defined metric: alert" % spec["calculation"]))
+        elif m.get("table") and m["table"].lower() not in {table_name(t["table"]) for t in src["tables"]}:
+            rows.append((met, m["expr"], calc["formula"], "MISMATCH",
+                         "same formula, but datasource '%s' does not read %s: alert" % (src["datasource"], m["table"])))
+        else:
+            rows.append((met, m["expr"], calc["formula"], "MATCH", ""))
+    return rows
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("file")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--check", metavar="MAP.json")
+    a = p.parse_args(argv)
+    sources = read(load_twb(a.file))
+    if a.check:
+        with open(a.check) as f:
+            mp = json.load(f)
+        base = os.path.dirname(os.path.abspath(a.check))
+        with open(os.path.join(base, mp["metrics"])) as f:
+            metrics = json.load(f)["metrics"]
+        rows = check(sources, mp["map"], metrics)
+        if a.json:
+            print(json.dumps([dict(zip(("metric", "defined", "tableau", "verdict", "why"), r)) for r in rows], indent=2))
+        else:
+            print("metric\tdefined\ttableau\tverdict\twhy")
+            for r in rows:
+                print("\t".join(r))
+        return 1 if any(r[3] != "MATCH" for r in rows) else 0
+    if a.json:
+        print(json.dumps(sources, indent=2))
+        return 0
+    for s in sources:
+        print("== datasource: %s" % s["datasource"])
+        for c in s["connections"]:
+            print("  connection: " + ", ".join("%s=%s" % kv for kv in c.items()))
+        for t in s["tables"]:
+            print("  table: %s" % t["table"])
+        for j in s["joins"]:
+            print("  join (%s): %s" % (j["join"], j["on"]))
+        for r in s["relationships"]:
+            print("  relationship: %s <-> %s on %s" % (r["left"], r["right"], r["on"]))
+        for c in s["calculations"]:
+            print("  calculation: %s = %s" % (c["name"], " ".join(c["formula"].split())))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

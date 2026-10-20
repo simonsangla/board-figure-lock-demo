@@ -1,0 +1,8 @@
+question,run,decision,sql
+total revenue,1,SQL,select sum(actual_revenue) from fct_monthly_revenue
+revenue by month,1,SQL,"select order_month, sum(actual_revenue) from fct_monthly_revenue group by 1 order by 1"
+revenue by product,1,SQL,"select product_id, sum(actual_revenue) from fct_monthly_revenue group by 1 order by 1"
+revenue by region,1,DECLINE,DECLINE
+customer happiness score,1,DECLINE,DECLINE
+churn rate by month,1,DECLINE,DECLINE
+net promoter score,1,DECLINE,DECLINE

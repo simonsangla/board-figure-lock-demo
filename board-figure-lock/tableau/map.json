@@ -1,0 +1,7 @@
+{
+  "_what": "Which Tableau calculation stands for which defined metric (bin/twb-read --check). fields: Tableau field -> warehouse column.",
+  "metrics": "../data/metrics.json",
+  "map": {
+    "revenue": {"calculation": "Revenue", "fields": {"[actual_revenue]": "actual_revenue"}}
+  }
+}

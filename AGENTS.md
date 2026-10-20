@@ -1,6 +1,6 @@
 # Project instructions
 
-Read by every agent; `CLAUDE.md` is exactly `@AGENTS.md` so Claude loads it too. Keep this file short (< 60 lines; CI fails at 200). Bootstrapped from simonsangla/mission-os-test `template/`.
+Read by every agent; `CLAUDE.md` is exactly `@AGENTS.md` so Claude loads it too. Keep this file short (< 60 lines; CI fails at 200).
 
 ## Start here
 1. Read this file, then the newest plan in `docs/plans/` and `git log --oneline -10`.
