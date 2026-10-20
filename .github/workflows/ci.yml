@@ -1,0 +1,14 @@
+name: ci
+on:
+  # Manual only: the gate is bin/check in the pre-commit hook, so pushes and PRs spend no Actions minutes.
+  # For a clean-runner check: Actions tab -> ci -> Run workflow.
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: bin/check (all checks live there; same script runs locally and in the pre-commit hook)
+        run: bin/check

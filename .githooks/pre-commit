@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Refuse the commit if the local CI fails. Activate: git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/bin/check"

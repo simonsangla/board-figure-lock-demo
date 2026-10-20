@@ -1,0 +1,17 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+# Secrets: never commit
+.env
+.env.*
+*.pem
+# Local Claude settings and skill workspaces
+.claude/settings.local.json
+.superpowers/
+# Build / deps
+node_modules/
+__pycache__/
+.venv/
+dist/
+*.log
