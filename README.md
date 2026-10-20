@@ -45,6 +45,7 @@ Tests: `make test`.
 | `tests/` | unit tests (stdlib `unittest`) |
 | `Makefile` | `make demo`, `make test` |
 | `LICENSE`, `NOTICE.md` | MIT licence, data origin |
+| `AGENTS.md`, `CLAUDE.md`, `.claude/`, `memory/`, `docs/plans/`, `bin/check`, `.githooks/` | instructions and checks for AI coding agents working on this repo; not needed to run the demo |
 
 Data: synthetic, from the public MIT demo `simonsangla/dbt-revenue-variance-demo` (see `NOTICE.md`). License: MIT.
 
@@ -75,7 +76,7 @@ Python 3 seulement (testé avec 3.13). Rien à installer, pas de réseau, pas de
 ```sh
 git clone https://github.com/simonsangla/board-figure-lock-demo.git
 cd board-figure-lock-demo
-./demo            # ou : make demo     (tests : make test)
+./demo            # ou : make demo     (forcer le moteur stdlib : ./demo --db sqlite ; tests : make test)
 ```
 
 Vous verrez : la réconciliation (3 chiffres OK, 1 écart voulu sur BF03, 1 refus), la porte et le score de 3 moteurs (un LLM local enregistré, une couche sémantique, un contrôle volontairement faux), puis le contrôle Tableau (`MATCH`).

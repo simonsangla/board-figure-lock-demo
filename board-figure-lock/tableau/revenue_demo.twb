@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8' ?>
-<!-- Synthetic demo workbook for Board Figure Lock (#80): written by hand, no client data, layout as in Tableau's own sample files (knowledge/tableau.md). -->
+<!-- Synthetic demo workbook for Board Figure Lock: written by hand, no client data, layout as in Tableau's own sample files. -->
 <workbook version='18.1'>
   <datasources>
     <datasource hasconnection='false' inline='true' name='Parameters' version='18.1'>
